@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation template to create a EC2 Instance Public IP Address.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Parent Stacks
+        Parameters:
+          - VPCStackName
+          - SGSshStackName
+          - SGWebStackName
+          - SGCustomStackName
+      - Label:
+          default: EC2 Instance
+        Parameters:
+          - InstanceName
+          - InstanceImageId
+          - InstanceType
+          - InstanceKeyPair
+    ParameterLabels:
+      VPCStackName:
+        default: Parent VPC Stack Name
+      SGSshStackName:
+        default: Parent SSH Security Group Stack Name
+      SGWebStackName:
+        default: Parent Web Security Group Stack Name
+      SGCustomStackName:
+        default: Parent Custom Security Group Stack Name
+      InstanceName:
+        default: EC2 Instance Name
+      InstanceImageId:
+        default: EC2 Instance Image ID
+      InstanceType:
+        default: EC2 Instance Type
+      InstanceKeyPair:
+        default: EC2 Instance Key Pair
+
+Parameters:
+  VPCStackName:
+    Description: Name of the VPC stack, Stack based on vpc/vpc-*azs.yml template.
+    Type: String
+    Default: ""
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  SGSshStackName:
+    Description: Name of the SSH Security Group stack, Stack based on vpc/sg-ssh.yml template.
+    Type: String
+    Default: ""
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  SGWebStackName:
+    Description: Name of the Web Security Group stack, Stack based on vpc/sg-web.yml template.
+    Type: String
+    Default: ""
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  SGCustomStackName:
+    Description: Name of the Custom Security Group stack, Stack based on vpc/sg-custom.yml template.
+    Type: String
+    Default: ""
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  InstanceName:
+    Description: Name of the EC2 Instance
+    Type: String
+    Default: MyEC2Instance
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  InstanceImageId:
+    Description: ID of the EC2 Instance Image
+    Type: String
+    Default: ami-0b0dcb5067f052a63
+    AllowedPattern: ^ami-[a-z0-9]*$
+    ConstraintDescription: must be a valid EC2 Instance Image ID.
+  InstanceType:
+    Description: Type of the EC2 Instance
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - m1.small
+      - m1.medium
+      - m1.large
+      - m1.xlarge
+      - m2.xlarge
+      - m2.2xlarge
+      - m2.4xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - m4.10xlarge
+      - c1.medium
+      - c1.xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - c3.4xlarge
+      - c3.8xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - g2.2xlarge
+      - g2.8xlarge
+      - r3.large
+      - r3.xlarge
+      - r3.2xlarge
+      - r3.4xlarge
+      - r3.8xlarge
+      - i2.xlarge
+      - i2.2xlarge
+      - i2.4xlarge
+      - i2.8xlarge
+      - d2.xlarge
+      - d2.2xlarge
+      - d2.4xlarge
+      - d2.8xlarge
+      - hi1.4xlarge
+      - hs1.8xlarge
+      - cr1.8xlarge
+      - cc2.8xlarge
+      - cg1.4xlarge
+    ConstraintDescription: must be a valid EC2 Instance Type.
+  InstanceKeyPair:
+    Description: Name of the EC2 Instance Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ""
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+Conditions:
+  HasClientSGSshStackName: !Not [!Equals [!Ref SGSshStackName, ""]]
+  HasClientSGWebStackName: !Not [!Equals [!Ref SGWebStackName, ""]]
+  HasClientSGCustomStackName: !Not [!Equals [!Ref SGCustomStackName, ""]]
+
+Resources:
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref InstanceImageId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref InstanceKeyPair
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: True
+          DeviceIndex: 0
+          GroupSet:
+            - !If [
+                HasClientSGSshStackName,
+                { "Fn::ImportValue": !Sub "${SGSshStackName}-SecurityGroupId" },
+                { "Ref": "AWS::NoValue" },
+              ]
+            - !If [
+                HasClientSGWebStackName,
+                { "Fn::ImportValue": !Sub "${SGWebStackName}-SecurityGroupId" },
+                { "Ref": "AWS::NoValue" },
+              ]
+            - !If [
+                HasClientSGCustomStackName,
+                {
+                  "Fn::ImportValue": !Sub "${SGCustomStackName}-SecurityGroupId",
+                },
+                { "Ref": "AWS::NoValue" },
+              ]
+          SubnetId: { "Fn::ImportValue": !Sub "${VPCStackName}-PublicSubnetId" }
+
+      Tags:
+        - Key: Name
+          Value: !Ref InstanceName
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      NetworkBorderGroup: !Ref AWS::Region
+      Tags:
+        - Key: Name
+          Value: !Ref InstanceName
+  ElasticIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      EIP: !Ref ElasticIP
+      InstanceId: !Ref Instance
+
+Outputs:
+  InstanceId:
+    Description: ID of the EC2 Instance
+    Value: !Ref Instance
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceId"
+  InstancePublicIpAddress:
+    Description: Public IP address of the EC2 Instance
+    Value: !GetAtt Instance.PublicIp
+    Export:
+      Name: !Sub "${AWS::StackName}-InstancePublicIpAddress"
+  InstancePrivateIpAddress:
+    Description: Private IP address of the EC2 Instance
+    Value: !GetAtt Instance.PrivateIp
+    Export:
+      Name: !Sub "${AWS::StackName}-InstancePrivateIpAddress"
+  InstancePublicDnsName:
+    Description: Public DNS name of the EC2 Instance
+    Value: !GetAtt Instance.PublicDnsName
+    Export:
+      Name: !Sub "${AWS::StackName}-InstancePublicDnsName"
+  InstancePrivateDnsName:
+    Description: Private DNS name of the EC2 Instance
+    Value: !GetAtt Instance.PrivateDnsName
+    Export:
+      Name: !Sub "${AWS::StackName}-InstancePrivateDnsName"

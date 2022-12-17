@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation template to create a High Availability HTTPS
+  Host/Instance in a VPC.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Parent Stack
+        Parameters:
+          - VPCStackName
+      - Label:
+          default: Security Group
+        Parameters:
+          - SecurityGroupName
+          - SecurityGroupDescription
+          - SecurityGroupIngressHTTPCidr
+          - SecurityGroupIngressHTTPSCidr
+    ParameterLabels:
+      VPCStackName:
+        default: Parent VPC Stack Name
+      SecurityGroupIngressHTTPCidr:
+        default: HTTP Ingress CIDR
+      SecurityGroupIngressHTTPSCidr:
+        default: HTTPS Ingress CIDR
+      SecurityGroupName:
+        default: Security Group Name
+      SecurityGroupDescription:
+        default: Security Group Description
+
+Parameters:
+  VPCStackName:
+    Description: Name of the VPC stack
+    Type: String
+    Default: ""
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  SecurityGroupIngressHTTPCidr:
+    Description: CIDR block for the HTTP ingress rule
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  SecurityGroupIngressHTTPSCidr:
+    Description: CIDR block for the HTTPS ingress rule
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  SecurityGroupName:
+    Description: Name of the Security Group
+    Type: String
+    Default: my-security-group
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+  SecurityGroupDescription:
+    Description: Description of the Security Group
+    Type: String
+    Default: my-security-group
+    AllowedPattern: ^[a-zA-Z0-9-]*$
+    ConstraintDescription: must contain only alphanumeric characters or hyphens.
+
+Resources:
+  SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Ref SecurityGroupDescription
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref SecurityGroupIngressHTTPCidr
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref SecurityGroupIngressHTTPSCidr
+      VpcId: { "Fn::ImportValue": !Sub "${VPCStackName}-VpcId" }
+
+Outputs:
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !GetAtt
+      - SecurityGroup
+      - GroupId
+    Export:
+      Name: !Sub ${AWS::StackName}-SecurityGroupId
